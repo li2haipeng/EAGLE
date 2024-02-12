@@ -454,15 +454,9 @@ def len_list(x,n):
 class Model(nn.Module):
     def __init__(self,config,load_emb=False,path=None,bias=True):
         super().__init__()
-
-
-
-
         self.gradient_checkpointing = True
         self.padding_idx = config.pad_token_id
         self.vocab_size = config.vocab_size
-
-
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         if load_emb:
             from safetensors import safe_open
@@ -485,7 +479,6 @@ class Model(nn.Module):
                 tensor=weights["model.embed_tokens.weight"].float()
             self.embed_tokens.weight.data = tensor
 
-
         #self.init_tree()
 
         self.layers = nn.ModuleList([LlamaDecoderLayer(config,index) for index in range(config.num_hidden_layers)])
@@ -499,10 +492,8 @@ class Model(nn.Module):
         self.tree = mc_sim_7b_63
         self.tree_buffer=generate_tree_buffers(self.tree,self.embed_tokens.weight.device)
 
-
     def reset(self):
         self.tree_mask=None
-
 
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
         # create causal mask
@@ -533,7 +524,6 @@ class Model(nn.Module):
             combined_attention_mask[:, :, -tree_len:, -tree_len:][
                 tree_mask == 0
                 ] = torch.finfo(torch.float32).min
-
 
         return combined_attention_mask
 
@@ -845,8 +835,6 @@ class Model(nn.Module):
         return (torch.cat(ss_token),torch.cat(ss_prob),ss_op)
 
 
-
-
     @torch.no_grad()
     def acc(self,data,head,max_length=5):
         hidden_states=data["hidden_states"]
@@ -895,12 +883,8 @@ class Model(nn.Module):
                     single_hidden_states=torch.cat((single_hidden_states,out_hidden[:,-1:]),dim=1)
                     single_input_ids = torch.cat((single_input_ids, torch.tensor([[token]]).to(single_input_ids.device)), dim=1)
 
-
         acc=[correct[i]/total[i] for i in range(len(correct))]
         return acc
-
-
-
 
 
 class Vhead(nn.Module):
@@ -909,7 +893,6 @@ class Vhead(nn.Module):
         self.fc = nn.Linear(ins,outs,bias=False)
     def forward(self,x):
         return self.fc(x)
-
 
 
 import torch

@@ -68,7 +68,6 @@ from transformers import get_linear_schedule_with_warmup, AutoConfig
 
 if accelerator.is_main_process:
     import wandb
-
     wandb.init(project="hidden_eagle", entity="haipenl", config=train_config)
 
 baseconfig = AutoConfig.from_pretrained(args.basepath)
@@ -97,7 +96,6 @@ head.eval()
 
 for param in head.parameters():
     param.requires_grad = False
-
 
 def list_files(path):
     datapath = []

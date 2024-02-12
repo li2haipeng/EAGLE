@@ -18,8 +18,6 @@ from .configs import EConfig
 from huggingface_hub import hf_hub_download
 
 
-
-
 class EaModel(nn.Module):
 
     def __init__(
