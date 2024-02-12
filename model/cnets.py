@@ -20,7 +20,6 @@
 """ PyTorch LLaMA model."""
 import copy
 import os
-#os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 import math
 from typing import List, Optional, Tuple, Union
 
