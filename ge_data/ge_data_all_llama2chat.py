@@ -10,7 +10,8 @@ parser.add_argument('--outdir', type=str, default='outdir0')
 args = parser.parse_args()
 import os
 
-os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_index)[1:-1]
+# os.environ["CUDA_VISIBLE_DEVICES"] = str(args.gpu_index)[1:-1]
+os.environ["CUDA_VISIBLE_DEVICES"] = "{},{}".format(args.gpu_index[0], args.gpu_index[0]+1)
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -43,7 +44,7 @@ def build_dataset_rank(
         tokenizer, split="train",
         select=None,
 ):
-    ds = load_dataset('json', data_files="/home/hongyanz/scratch/data/ShareGPT_V4.3_unfiltered_cleaned_split.json")
+    ds = load_dataset('json', data_files="/home/ubuntu/ShareGPT_Vicuna_unfiltered/ShareGPT_V4.3_unfiltered_cleaned_split.json")
     ds = ds['train']
     ds = ds.shuffle(seed=42)
     ds1 = ds.select(range(args.start, args.end))
