@@ -26,7 +26,6 @@ class EaModel(nn.Module):
             base_model_name_or_path,
             ea_model_path,
     ):
-
         super().__init__()
         self.base_model = base_model
         self.config = base_model.config
