@@ -775,8 +775,6 @@ class Model(nn.Module):
                 else:
                     last_headout=F.linear(last_hidden,self.headweight)
 
-
-
             for i in range(len(self.tree_buffer['tree_indices'])):
                 if logits_processor is not None:
                     topk_index,topk_prob,op=self.sample(last_headout,logits_processor,k=top_k,)
