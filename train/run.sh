@@ -1,0 +1,1 @@
+accelerate launch --mixed_precision=bf16 main.py

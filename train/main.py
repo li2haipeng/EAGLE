@@ -3,14 +3,14 @@ import sys
 sys.path.append("..")
 parser = argparse.ArgumentParser(description='sp')
 parser.add_argument('--basepath', type=str, default='/home/ubuntu/Llama-2-13B-chat-hf')
-# parser.add_argument('--configpath', type=str, default="/home/ubuntu/EAGLE/train/llama_2_chat_13B_config.json")
-parser.add_argument('--configpath', type=str, default="/home/ubuntu/EAGLE/train/test_config.json")
+parser.add_argument('--draftpath', type=str, default="/home/ubuntu/Suzuka_models/120M")
+parser.add_argument('--configpath', type=str, default="/home/ubuntu/EAGLE/train/llama_2_chat_13B_config.json")
 parser.add_argument('--lr', type=float, default=3e-5)
 parser.add_argument('--bs', type=int, default=4)
 parser.add_argument('--gradient-accumulation-steps', type=int, default=1)
 parser.add_argument('--tmpdir', type=str, default='/home/ubuntu/EAGLE/0')
 parser.add_argument('--outdir', type=str, default='0')
-parser.add_argument('--cpdir', type=str, default='llama2_13b_test')
+parser.add_argument('--cpdir', type=str, default='draft_llama2_13b_test')
 args = parser.parse_args()
 
 train_config = {
@@ -56,7 +56,8 @@ from accelerate.utils import set_seed
 set_seed(0)
 accelerator = Accelerator(mixed_precision='bf16',
                           gradient_accumulation_steps=train_config["gradient_accumulation_steps"])
-from model.cnets import Model
+# from model.cnets import Model
+from model.hidden_draft import Model
 from model.configs import EConfig
 from typing import Any, Dict, List
 
