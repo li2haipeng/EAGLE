@@ -192,7 +192,8 @@ class LlamaAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.hidden_size = config.hidden_size
+        # self.hidden_size = config.hidden_size
+        self.hidden_size = config.draft_hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
         self.num_key_value_heads = config.num_key_value_heads
@@ -329,7 +330,7 @@ class LlamaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.hidden_size = config.hidden_size
+        self.hidden_size = config.draft_hidden_size
         self.intermediate_size = config.intermediate_size
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
@@ -377,13 +378,18 @@ class LlamaRMSNorm(nn.Module):
 class LlamaDecoderLayer(nn.Module):
     def __init__(self, config,index):
         super().__init__()
-        self.hidden_size = config.hidden_size
+        # self.hidden_size = config.hidden_size
+        self.hidden_size = config.draft_hidden_size
         self.self_attn = LlamaAttention(config=config)
         self.mlp = LlamaMLP(config)
         self.index=index
+        # if self.index!=0:
+        #     self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+
         if self.index!=0:
-            self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.input_layernorm = LlamaRMSNorm(config.draft_hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.draft_hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
@@ -481,7 +487,9 @@ class Model(nn.Module):
         #self.init_tree()
 
         self.layers = nn.ModuleList([LlamaDecoderLayer(config,index) for index in range(config.num_hidden_layers)])
-        self.fc=nn.Linear(2*config.hidden_size,config.hidden_size,bias=bias)
+        # self.fc=nn.Linear(2*config.hidden_size,config.hidden_size,bias=bias)
+        self.fc=nn.Linear(2*config.hidden_size,config.draft_hidden_size,bias=bias)
+        self.fc1=nn.Linear(config.draft_hidden_size, config.hidden_size, bias=bias)
         self.act=ACT2FN[config.hidden_act]
         for param in self.embed_tokens.parameters():
             param.requires_grad = False
@@ -620,7 +628,7 @@ class Model(nn.Module):
 
             if use_cache:
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-
+        hidden_states = self.fc1(hidden_states)
         if use_cache:
             return hidden_states,next_decoder_cache
 

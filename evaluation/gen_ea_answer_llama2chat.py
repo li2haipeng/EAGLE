@@ -443,7 +443,6 @@ if __name__ == "__main__":
     args.tree_choices = eval(args.tree_choices)
     if args.num_gpus_total // args.num_gpus_per_model > 1:
         import ray
-
         ray.init()
 
     question_file = f"data/{args.bench_name}/question.jsonl"

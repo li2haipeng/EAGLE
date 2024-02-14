@@ -3,13 +3,14 @@ import sys
 sys.path.append("..")
 parser = argparse.ArgumentParser(description='sp')
 parser.add_argument('--basepath', type=str, default='/home/ubuntu/Llama-2-13B-chat-hf')
-parser.add_argument('--configpath', type=str, default="/home/ubuntu/EAGLE/train/llama_2_chat_13B_config.json")
+# parser.add_argument('--configpath', type=str, default="/home/ubuntu/EAGLE/train/llama_2_chat_13B_config.json")
+parser.add_argument('--configpath', type=str, default="/home/ubuntu/EAGLE/train/test_config.json")
 parser.add_argument('--lr', type=float, default=3e-5)
 parser.add_argument('--bs', type=int, default=4)
 parser.add_argument('--gradient-accumulation-steps', type=int, default=1)
 parser.add_argument('--tmpdir', type=str, default='/home/ubuntu/EAGLE/0')
 parser.add_argument('--outdir', type=str, default='0')
-parser.add_argument('--cpdir', type=str, default='llama2_13b')
+parser.add_argument('--cpdir', type=str, default='llama2_13b_test')
 args = parser.parse_args()
 
 train_config = {
