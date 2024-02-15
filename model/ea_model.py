@@ -13,7 +13,8 @@ from .choices import mc_sim_7b_63
 from transformers import AutoTokenizer
 import os
 from huggingface_hub import hf_hub_download
-from .cnets import Model
+from .hidden_head import Model
+# from .cnets import Model
 from .configs import EConfig
 from huggingface_hub import hf_hub_download
 

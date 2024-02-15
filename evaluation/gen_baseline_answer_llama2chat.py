@@ -6,8 +6,7 @@ python3 gen_model_answer.py --model-path lmsys/fastchat-t5-3b-v1.0 --model-id fa
 import argparse
 import json
 import os
-
-#os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
 import time
 import shortuuid
 from tqdm import tqdm
@@ -358,7 +357,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--load-in-8bit", action="store_false", help="Use 8-bit quantization"
     )
-    parser.add_argument("--model-id", type=str, default="ess-llama-2-chat-70b-fp16-baseline")
+    parser.add_argument("--model-id", type=str, default="ess-llama-2-chat-13b-fp16-baseline")
     parser.add_argument(
         "--bench-name",
         type=str,

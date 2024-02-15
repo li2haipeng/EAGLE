@@ -20,6 +20,7 @@
 """ PyTorch LLaMA model."""
 import copy
 import os
+#os.environ["CUDA_VISIBLE_DEVICES"] = "5"
 import math
 from typing import List, Optional, Tuple, Union
 
@@ -192,8 +193,7 @@ class LlamaAttention(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        # self.hidden_size = config.hidden_size
-        self.hidden_size = config.draft_hidden_size
+        self.hidden_size = config.hidden_size
         self.num_heads = config.num_attention_heads
         self.head_dim = self.hidden_size // self.num_heads
         self.num_key_value_heads = config.num_key_value_heads
@@ -330,7 +330,7 @@ class LlamaMLP(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
-        self.hidden_size = config.draft_hidden_size
+        self.hidden_size = config.hidden_size
         self.intermediate_size = config.intermediate_size
         self.gate_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
         self.up_proj = nn.Linear(self.hidden_size, self.intermediate_size, bias=False)
@@ -378,18 +378,13 @@ class LlamaRMSNorm(nn.Module):
 class LlamaDecoderLayer(nn.Module):
     def __init__(self, config,index):
         super().__init__()
-        # self.hidden_size = config.hidden_size
-        self.hidden_size = config.draft_hidden_size
+        self.hidden_size = config.hidden_size
         self.self_attn = LlamaAttention(config=config)
         self.mlp = LlamaMLP(config)
         self.index=index
-        # if self.index!=0:
-        #     self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-        # self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
-
         if self.index!=0:
-            self.input_layernorm = LlamaRMSNorm(config.draft_hidden_size, eps=config.rms_norm_eps)
-        self.post_attention_layernorm = LlamaRMSNorm(config.draft_hidden_size, eps=config.rms_norm_eps)
+            self.input_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        self.post_attention_layernorm = LlamaRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
     def forward(
         self,
@@ -484,12 +479,11 @@ class Model(nn.Module):
                 tensor=weights["model.embed_tokens.weight"].float()
             self.embed_tokens.weight.data = tensor
 
+
         #self.init_tree()
 
         self.layers = nn.ModuleList([LlamaDecoderLayer(config,index) for index in range(config.num_hidden_layers)])
-        # self.fc=nn.Linear(2*config.hidden_size,config.hidden_size,bias=bias)
-        self.fc=nn.Linear(2*config.hidden_size,config.draft_hidden_size,bias=bias)
-        self.fc1=nn.Linear(config.draft_hidden_size, config.hidden_size, bias=bias)
+        self.fc=nn.Linear(2*config.hidden_size,config.hidden_size,bias=bias)
         self.act=ACT2FN[config.hidden_act]
         for param in self.embed_tokens.parameters():
             param.requires_grad = False
@@ -499,8 +493,10 @@ class Model(nn.Module):
         self.tree = mc_sim_7b_63
         self.tree_buffer=generate_tree_buffers(self.tree,self.embed_tokens.weight.device)
 
+
     def reset(self):
         self.tree_mask=None
+
 
     def _prepare_decoder_attention_mask(self, attention_mask, input_shape, inputs_embeds, past_key_values_length):
         # create causal mask
@@ -531,6 +527,7 @@ class Model(nn.Module):
             combined_attention_mask[:, :, -tree_len:, -tree_len:][
                 tree_mask == 0
                 ] = torch.finfo(torch.float32).min
+
 
         return combined_attention_mask
 
@@ -628,7 +625,7 @@ class Model(nn.Module):
 
             if use_cache:
                 next_decoder_cache += (layer_outputs[2 if output_attentions else 1],)
-        hidden_states = self.fc1(hidden_states)
+
         if use_cache:
             return hidden_states,next_decoder_cache
 
@@ -783,6 +780,8 @@ class Model(nn.Module):
                 else:
                     last_headout=F.linear(last_hidden,self.headweight)
 
+
+
             for i in range(len(self.tree_buffer['tree_indices'])):
                 if logits_processor is not None:
                     topk_index,topk_prob,op=self.sample(last_headout,logits_processor,k=top_k,)
@@ -840,6 +839,8 @@ class Model(nn.Module):
         return (torch.cat(ss_token),torch.cat(ss_prob),ss_op)
 
 
+
+
     @torch.no_grad()
     def acc(self,data,head,max_length=5):
         hidden_states=data["hidden_states"]
@@ -888,8 +889,12 @@ class Model(nn.Module):
                     single_hidden_states=torch.cat((single_hidden_states,out_hidden[:,-1:]),dim=1)
                     single_input_ids = torch.cat((single_input_ids, torch.tensor([[token]]).to(single_input_ids.device)), dim=1)
 
+
         acc=[correct[i]/total[i] for i in range(len(correct))]
         return acc
+
+
+
 
 
 class Vhead(nn.Module):
@@ -898,6 +903,7 @@ class Vhead(nn.Module):
         self.fc = nn.Linear(ins,outs,bias=False)
     def forward(self,x):
         return self.fc(x)
+
 
 
 import torch

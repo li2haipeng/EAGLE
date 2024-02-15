@@ -2,9 +2,9 @@ import json
 from transformers import AutoTokenizer
 import numpy as np
 
-tokenizer=AutoTokenizer.from_pretrained("/home/lyh/weights/hf/llama2chat/13B/")
-jsonl_file = "llama-2-chat-70b-fp16-ea-in-temperature-0.0.jsonl"
-jsonl_file_base = "llama-2-chat-70b-fp16-base-in-temperature-0.0.jsonl"
+tokenizer=AutoTokenizer.from_pretrained("/home/ubuntu/Llama-2-13B-chat-hf")
+jsonl_file = "/home/ubuntu/EAGLE/data/mt_bench/model_answer/reproduce-llama2-chat-13b-temperature-1.0.jsonl"
+jsonl_file_base = "/home/ubuntu/EAGLE/data/mt_bench/model_answer/baseline-llama2-chat-13b-temperature-1.0.jsonl"
 data = []
 with open(jsonl_file, 'r', encoding='utf-8') as file:
     for line in file:
@@ -47,6 +47,8 @@ for datapoint in data:
 
 # print('speed',np.array(speeds).mean())
 # print('speed0',np.array(speeds0).mean())
+for i in range(len(speeds)):
+    print(speeds[i]/speeds0[i])
 print("ratio",np.array(speeds).mean()/np.array(speeds0).mean())
 
 

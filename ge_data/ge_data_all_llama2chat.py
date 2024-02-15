@@ -1,6 +1,7 @@
 import argparse
 import copy
-
+import sys
+sys.path.append("..")
 parser = argparse.ArgumentParser(description='sp')
 parser.add_argument('--start', type=int, default=0)
 parser.add_argument('--end', type=int, default=100)

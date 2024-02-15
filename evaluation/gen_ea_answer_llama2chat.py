@@ -6,7 +6,7 @@ python3 gen_model_answer.py --model-path lmsys/fastchat-t5-3b-v1.0 --model-id fa
 import argparse
 import json
 import os
-# os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
+os.environ["CUDA_VISIBLE_DEVICES"] = "6,7"
 import time
 
 import shortuuid
@@ -443,6 +443,7 @@ if __name__ == "__main__":
     args.tree_choices = eval(args.tree_choices)
     if args.num_gpus_total // args.num_gpus_per_model > 1:
         import ray
+
         ray.init()
 
     question_file = f"data/{args.bench_name}/question.jsonl"
