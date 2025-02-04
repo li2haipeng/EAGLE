@@ -205,6 +205,7 @@ def get_model_answers(
     print('Warmup done')
 
     # questions=questions[6:]
+    acceptance_len_list = []
     for question in tqdm(questions):
 
         choices = []
@@ -216,6 +217,7 @@ def get_model_answers(
             ]
             turns = []
             idxs = []
+            ars = []    # add
             new_tokens = []
             wall_time = []
             for j in range(len(question["turns"])):
@@ -235,7 +237,7 @@ def get_model_answers(
                 torch.cuda.synchronize()
                 start_time = time.time()
 
-                output_ids, new_token, idx = model.eagenerate(
+                output_ids, new_token, idx, ar = model.eagenerate(
                     torch.as_tensor(input_ids).cuda(),
                     temperature=temperature,
                     log=True,
@@ -276,6 +278,8 @@ def get_model_answers(
 
                 turns.append(output)
                 idxs.append(int(idx))
+                ars.append((sum(ar)/len(ar)).item()) # add
+                acceptance_len_list.append((sum(ar)/len(ar)).item())               
                 new_tokens.append(int(new_token))
                 wall_time.append(total_time)
                 messages.append({
@@ -283,7 +287,8 @@ def get_model_answers(
                     "content": output
                 })
             # torch.cuda.empty_cache()
-            choices.append({"index": i, "turns": turns, "idxs": idxs, "new_tokens": new_tokens, "wall_time": wall_time})
+            # choices.append({"index": i, "turns": turns, "idxs": idxs, "new_tokens": new_tokens, "wall_time": wall_time})
+            choices.append({"index": i, "turns": turns, "idxs": idxs, "new_tokens": new_tokens, "wall_time": wall_time, "ar": ars}) # fix
 
         # Dump answers
         os.makedirs(os.path.dirname(answer_file), exist_ok=True)
@@ -296,6 +301,15 @@ def get_model_answers(
                 "tstamp": time.time(),
             }
             fout.write(json.dumps(ans_json) + "\n")
+    with open(
+        os.path.expanduser(answer_file.replace(".jsonl", "-tau.jsonl")), "w"
+    ) as f:
+        result = {
+            "tau": sum(acceptance_len_list)/len(acceptance_len_list),
+        }
+
+        json.dump(result, f)
+    print(f"final acceptance len: {sum(acceptance_len_list)/len(acceptance_len_list)}")
 
 
 def reorg_answer_file(answer_file):
@@ -401,7 +415,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    args.model_id = args.model_id + "-temperature-" + str(args.temperature)
+    args.model_id = "topk-" + str(args.top_k) + "-depth-" + str(args.depth) + "-total-" + str(args.total_token) + '-' + args.model_id + "-temperature-" + str(args.temperature)
+
     if args.num_gpus_total // args.num_gpus_per_model > 1:
         import ray
 
