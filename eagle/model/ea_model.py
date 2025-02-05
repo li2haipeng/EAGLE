@@ -1,7 +1,7 @@
 import copy
 import json
 import time
-
+from pathlib import Path
 import torch
 import torch.nn as nn
 from huggingface_hub import hf_hub_download
@@ -18,9 +18,6 @@ from .kv_cache import initialize_past_key_values
 
 from .cnets import Model
 from .configs import EConfig
-
-
-
 
 
 class EaModel(nn.Module):
@@ -116,10 +113,18 @@ class EaModel(nn.Module):
                                              map_location=base_model.device)
         except:
             from safetensors.torch import load_file
-            load_model_path = os.path.join(ea_model_path, "model.safetensors")
-            if not os.path.exists(load_model_path):
-                load_model_path = hf_hub_download(ea_model_path, "model.safetensors")
-            ea_layer_state_dict = load_file(load_model_path)
+            safetensors_files = list(Path(ea_model_path).glob("model*.safetensors"))
+            if safetensors_files:
+                ea_layer_state_dict = {}
+                for st_file in safetensors_files:
+                    ea_layer_state_dict.update(load_file(Path(ea_model_path) / st_file))
+            #if ea_layer_state_dict.get("lm_head.weight"):
+                #ea_layer_state_dict.pop("lm_head.weight")
+                ea_layer_state_dict.pop("lm_head.weight") # if fsdp, comment out this line; if deepspeed, uncomment.
+            # load_model_path = os.path.join(ea_model_path, "model.safetensors")
+            # if not os.path.exists(load_model_path):
+            #     load_model_path = hf_hub_download(ea_model_path, "model.safetensors")
+            # ea_layer_state_dict = load_file(load_model_path)
         model = cls(
             base_model,
             base_model_path,

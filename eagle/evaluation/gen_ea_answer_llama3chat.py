@@ -153,7 +153,7 @@ def get_model_answers(
             torch.cuda.synchronize()
             start_time = time.time()
 
-            output_ids, new_token, idx = model.eagenerate(
+            output_ids, new_token, idx, _ = model.eagenerate(
                 torch.as_tensor(input_ids).cuda(),
                 temperature=temperature,
                 log=True,
@@ -206,6 +206,8 @@ def get_model_answers(
 
     # questions=questions[6:]
     acceptance_len_list = []
+    total_gen_tokens = 0
+    total_walltime = 0
     for question in tqdm(questions):
 
         choices = []
@@ -286,8 +288,12 @@ def get_model_answers(
                     "role": "assistant",
                     "content": output
                 })
+                # breakpoint()
             # torch.cuda.empty_cache()
             # choices.append({"index": i, "turns": turns, "idxs": idxs, "new_tokens": new_tokens, "wall_time": wall_time})
+            # breakpoint()
+            total_gen_tokens += sum(new_tokens)
+            total_walltime += sum(wall_time)
             choices.append({"index": i, "turns": turns, "idxs": idxs, "new_tokens": new_tokens, "wall_time": wall_time, "ar": ars}) # fix
 
         # Dump answers
@@ -306,6 +312,9 @@ def get_model_answers(
     ) as f:
         result = {
             "tau": sum(acceptance_len_list)/len(acceptance_len_list),
+            "total_gen": total_gen_tokens,
+            "total_walltime": total_walltime,
+            "throughput": total_gen_tokens/total_walltime
         }
 
         json.dump(result, f)

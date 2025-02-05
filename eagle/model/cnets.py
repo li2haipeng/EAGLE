@@ -28,7 +28,10 @@ import torch.utils.checkpoint
 from torch import nn
 
 from transformers.activations import ACT2FN
-
+from transformers.models.llama.modeling_llama import (
+    LlamaRotaryEmbedding,
+    apply_rotary_pos_emb,
+)
 
 try:
     from .configs import EConfig
@@ -88,103 +91,103 @@ def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
 
 
-def rotate_half(x):
-    """Rotates half the hidden dims of the input."""
-    x1 = x[..., : x.shape[-1] // 2]
-    x2 = x[..., x.shape[-1] // 2:]
-    return torch.cat((-x2, x1), dim=-1)
+# def rotate_half(x):
+#     """Rotates half the hidden dims of the input."""
+#     x1 = x[..., : x.shape[-1] // 2]
+#     x2 = x[..., x.shape[-1] // 2:]
+#     return torch.cat((-x2, x1), dim=-1)
 
 
-def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
-    # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
-    cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
-    sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
-    cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-    sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
+# def apply_rotary_pos_emb(q, k, cos, sin, position_ids):
+#     # The first two dimensions of cos and sin are always 1, so we can `squeeze` them.
+#     cos = cos.squeeze(1).squeeze(0)  # [seq_len, dim]
+#     sin = sin.squeeze(1).squeeze(0)  # [seq_len, dim]
+#     cos = cos[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
+#     sin = sin[position_ids].unsqueeze(1)  # [bs, 1, seq_len, dim]
+#     q_embed = (q * cos) + (rotate_half(q) * sin)
+#     k_embed = (k * cos) + (rotate_half(k) * sin)
+#     return q_embed, k_embed
 
 
-class LlamaRotaryEmbedding(torch.nn.Module):
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
-        super().__init__()
+# class LlamaRotaryEmbedding(torch.nn.Module):
+#     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None):
+#         super().__init__()
 
-        self.dim = dim
-        self.max_position_embeddings = max_position_embeddings
-        self.base = base
-        inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
-        self.register_buffer("inv_freq", inv_freq, persistent=False)
+#         self.dim = dim
+#         self.max_position_embeddings = max_position_embeddings
+#         self.base = base
+#         inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+#         self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-        # Build here to make `torch.jit.trace` work.
-        self._set_cos_sin_cache(
-            seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
-        )
+#         # Build here to make `torch.jit.trace` work.
+#         self._set_cos_sin_cache(
+#             seq_len=max_position_embeddings, device=self.inv_freq.device, dtype=torch.get_default_dtype()
+#         )
 
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+#     def _set_cos_sin_cache(self, seq_len, device, dtype):
+#         self.max_seq_len_cached = seq_len
+#         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
 
-        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
+#         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+#         # Different from paper, but it uses a different permutation in order to obtain the same calculation
+#         emb = torch.cat((freqs, freqs), dim=-1)
+#         self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
+#         self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
 
-    def forward(self, x, seq_len=None):
-        # x: [bs, num_attention_heads, seq_len, head_size]
-        if seq_len > self.max_seq_len_cached:
-            self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
+#     def forward(self, x, seq_len=None):
+#         # x: [bs, num_attention_heads, seq_len, head_size]
+#         if seq_len > self.max_seq_len_cached:
+#             self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
 
-        return (
-            self.cos_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
-            self.sin_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
-        )
-
-
-class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
-    """LlamaRotaryEmbedding extended with linear scaling. Credits to the Reddit user /u/kaiokendev"""
-
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
-        self.scaling_factor = scaling_factor
-        super().__init__(dim, max_position_embeddings, base, device)
-
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
-        t = t / self.scaling_factor
-
-        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
+#         return (
+#             self.cos_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
+#             self.sin_cached[:, :, :seq_len, ...].to(dtype=x.dtype),
+#         )
 
 
-class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
-    """LlamaRotaryEmbedding extended with Dynamic NTK scaling. Credits to the Reddit users /u/bloc97 and /u/emozilla"""
+# class LlamaLinearScalingRotaryEmbedding(LlamaRotaryEmbedding):
+#     """LlamaRotaryEmbedding extended with linear scaling. Credits to the Reddit user /u/kaiokendev"""
 
-    def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
-        self.scaling_factor = scaling_factor
-        super().__init__(dim, max_position_embeddings, base, device)
+#     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
+#         self.scaling_factor = scaling_factor
+#         super().__init__(dim, max_position_embeddings, base, device)
 
-    def _set_cos_sin_cache(self, seq_len, device, dtype):
-        self.max_seq_len_cached = seq_len
+#     def _set_cos_sin_cache(self, seq_len, device, dtype):
+#         self.max_seq_len_cached = seq_len
+#         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+#         t = t / self.scaling_factor
 
-        if seq_len > self.max_position_embeddings:
-            base = self.base * (
-                    (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
-            ) ** (self.dim / (self.dim - 2))
-            inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
-            self.register_buffer("inv_freq", inv_freq, persistent=False)
+#         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+#         # Different from paper, but it uses a different permutation in order to obtain the same calculation
+#         emb = torch.cat((freqs, freqs), dim=-1)
+#         self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
+#         self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
 
-        t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
 
-        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
-        # Different from paper, but it uses a different permutation in order to obtain the same calculation
-        emb = torch.cat((freqs, freqs), dim=-1)
-        self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
-        self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
+# class LlamaDynamicNTKScalingRotaryEmbedding(LlamaRotaryEmbedding):
+#     """LlamaRotaryEmbedding extended with Dynamic NTK scaling. Credits to the Reddit users /u/bloc97 and /u/emozilla"""
+
+#     def __init__(self, dim, max_position_embeddings=2048, base=10000, device=None, scaling_factor=1.0):
+#         self.scaling_factor = scaling_factor
+#         super().__init__(dim, max_position_embeddings, base, device)
+
+#     def _set_cos_sin_cache(self, seq_len, device, dtype):
+#         self.max_seq_len_cached = seq_len
+
+#         if seq_len > self.max_position_embeddings:
+#             base = self.base * (
+#                     (self.scaling_factor * seq_len / self.max_position_embeddings) - (self.scaling_factor - 1)
+#             ) ** (self.dim / (self.dim - 2))
+#             inv_freq = 1.0 / (base ** (torch.arange(0, self.dim, 2).float().to(device) / self.dim))
+#             self.register_buffer("inv_freq", inv_freq, persistent=False)
+
+#         t = torch.arange(self.max_seq_len_cached, device=device, dtype=self.inv_freq.dtype)
+
+#         freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+#         # Different from paper, but it uses a different permutation in order to obtain the same calculation
+#         emb = torch.cat((freqs, freqs), dim=-1)
+#         self.register_buffer("cos_cached", emb.cos()[None, None, :, :].to(dtype), persistent=False)
+#         self.register_buffer("sin_cached", emb.sin()[None, None, :, :].to(dtype), persistent=False)
 
 
 class LlamaAttention(nn.Module):
@@ -199,75 +202,72 @@ class LlamaAttention(nn.Module):
         self.num_key_value_heads = config.num_key_value_heads
         self.num_key_value_groups = self.num_heads // self.num_key_value_heads
         self.max_position_embeddings = config.max_position_embeddings
+        self.attention_dropout = config.attention_dropout
+        self.is_causal = True
 
         if (self.head_dim * self.num_heads) != self.hidden_size:
             raise ValueError(
                 f"hidden_size must be divisible by num_heads (got `hidden_size`: {self.hidden_size}"
                 f" and `num_heads`: {self.num_heads})."
             )
-        if hasattr(config, "qkv_bias"):
-            self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=config.qkv_bias)
-            self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.qkv_bias)
-            self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=config.qkv_bias)
-        else:
-            self.q_proj = nn.Linear(self.hidden_size, self.num_heads * self.head_dim, bias=False)
-            self.k_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-            self.v_proj = nn.Linear(self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False)
-        self.o_proj = nn.Linear(self.num_heads * self.head_dim, self.hidden_size, bias=False)
-        self._init_rope()
-
-    def _init_rope(self):
-        if self.config.rope_scaling is None:
-            if hasattr(self.config, "rope_theta"):
-                self.rotary_emb = LlamaRotaryEmbedding(self.head_dim,
-                                                       max_position_embeddings=self.max_position_embeddings,
-                                                       base=self.config.rope_theta)
-            else:
-                self.rotary_emb = LlamaRotaryEmbedding(self.head_dim,
-                                                       max_position_embeddings=self.max_position_embeddings)
-        else:
-            scaling_type = self.config.rope_scaling["type"]
-            scaling_factor = self.config.rope_scaling["factor"]
-            if scaling_type == "linear":
-                self.rotary_emb = LlamaLinearScalingRotaryEmbedding(
-                    self.head_dim, max_position_embeddings=self.max_position_embeddings, scaling_factor=scaling_factor
-                )
-            elif scaling_type == "dynamic":
-                self.rotary_emb = LlamaDynamicNTKScalingRotaryEmbedding(
-                    self.head_dim, max_position_embeddings=self.max_position_embeddings, scaling_factor=scaling_factor
-                )
-            else:
-                raise ValueError(f"Unknown RoPE scaling type {scaling_type}")
+        self.q_proj = nn.Linear(
+            self.hidden_size, self.num_heads * self.head_dim, bias=False
+        )
+        self.k_proj = nn.Linear(
+            self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False
+        )
+        self.v_proj = nn.Linear(
+            self.hidden_size, self.num_key_value_heads * self.head_dim, bias=False
+        )
+        self.o_proj = nn.Linear(
+            self.num_heads * self.head_dim, self.hidden_size, bias=False
+        )
+        self.rotary_emb = LlamaRotaryEmbedding(config=self.config)
 
     def _shape(self, tensor: torch.Tensor, seq_len: int, bsz: int):
-        return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
+        return (
+            tensor.view(bsz, seq_len, self.num_heads, self.head_dim)
+                .transpose(1, 2)
+                .contiguous()
+        )
 
     def forward(
-            self,
-            hidden_states: torch.Tensor,
-            attention_mask: Optional[torch.Tensor] = None,
-            position_ids: Optional[torch.LongTensor] = None,
-            past_key_value: Optional[Tuple[torch.Tensor]] = None,
-            output_attentions: bool = False,
-            use_cache: bool = False,
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        output_attentions: bool = False,
+        use_cache: bool = False,
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
         bsz, q_len, _ = hidden_states.size()
 
         if self.config.pretraining_tp > 1:
-            key_value_slicing = (self.num_key_value_heads * self.head_dim) // self.config.pretraining_tp
+            key_value_slicing = (
+                                    self.num_key_value_heads * self.head_dim
+                                ) // self.config.pretraining_tp
             query_slices = self.q_proj.weight.split(
                 (self.num_heads * self.head_dim) // self.config.pretraining_tp, dim=0
             )
             key_slices = self.k_proj.weight.split(key_value_slicing, dim=0)
             value_slices = self.v_proj.weight.split(key_value_slicing, dim=0)
 
-            query_states = [F.linear(hidden_states, query_slices[i]) for i in range(self.config.pretraining_tp)]
+            query_states = [
+                F.linear(hidden_states, query_slices[i])
+                for i in range(self.config.pretraining_tp)
+            ]
             query_states = torch.cat(query_states, dim=-1)
 
-            key_states = [F.linear(hidden_states, key_slices[i]) for i in range(self.config.pretraining_tp)]
+            key_states = [
+                F.linear(hidden_states, key_slices[i])
+                for i in range(self.config.pretraining_tp)
+            ]
             key_states = torch.cat(key_states, dim=-1)
 
-            value_states = [F.linear(hidden_states, value_slices[i]) for i in range(self.config.pretraining_tp)]
+            value_states = [
+                F.linear(hidden_states, value_slices[i])
+                for i in range(self.config.pretraining_tp)
+            ]
             value_states = torch.cat(value_states, dim=-1)
 
         else:
@@ -275,15 +275,24 @@ class LlamaAttention(nn.Module):
             key_states = self.k_proj(hidden_states)
             value_states = self.v_proj(hidden_states)
 
-        query_states = query_states.view(bsz, q_len, self.num_heads, self.head_dim).transpose(1, 2)
-        key_states = key_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
-        value_states = value_states.view(bsz, q_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        query_states = query_states.view(
+            bsz, q_len, self.num_heads, self.head_dim
+        ).transpose(1, 2)
+        key_states = key_states.view(
+            bsz, q_len, self.num_key_value_heads, self.head_dim
+        ).transpose(1, 2)
+        value_states = value_states.view(
+            bsz, q_len, self.num_key_value_heads, self.head_dim
+        ).transpose(1, 2)
 
         kv_seq_len = key_states.shape[-2]
         if past_key_value is not None:
             kv_seq_len += past_key_value[0].shape[-2]
-        cos, sin = self.rotary_emb(value_states, seq_len=kv_seq_len)
-        query_states, key_states = apply_rotary_pos_emb(query_states, key_states, cos, sin, position_ids)
+
+        cos, sin = self.rotary_emb(value_states, position_ids)
+        query_states, key_states = apply_rotary_pos_emb(
+            query_states, key_states, cos, sin
+        )
 
         if past_key_value is not None:
             # reuse k, v, self_attention
@@ -296,7 +305,9 @@ class LlamaAttention(nn.Module):
         key_states = repeat_kv(key_states, self.num_key_value_groups)
         value_states = repeat_kv(value_states, self.num_key_value_groups)
 
-        attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(self.head_dim)
+        attn_weights = torch.matmul(
+            query_states, key_states.transpose(2, 3)
+        ) / math.sqrt(self.head_dim)
 
         if attn_weights.size() != (bsz, self.num_heads, q_len, kv_seq_len):
             raise ValueError(
@@ -312,7 +323,9 @@ class LlamaAttention(nn.Module):
             attn_weights = attn_weights + attention_mask
 
         # upcast attention to fp32
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(query_states.dtype)
+        attn_weights = nn.functional.softmax(
+            attn_weights, dim=-1, dtype=torch.float32
+        ).to(query_states.dtype)
         attn_output = torch.matmul(attn_weights, value_states)
 
         if attn_output.size() != (bsz, self.num_heads, q_len, self.head_dim):
@@ -325,9 +338,18 @@ class LlamaAttention(nn.Module):
         attn_output = attn_output.reshape(bsz, q_len, self.hidden_size)
 
         if self.config.pretraining_tp > 1:
-            attn_output = attn_output.split(self.hidden_size // self.config.pretraining_tp, dim=2)
-            o_proj_slices = self.o_proj.weight.split(self.hidden_size // self.config.pretraining_tp, dim=1)
-            attn_output = sum([F.linear(attn_output[i], o_proj_slices[i]) for i in range(self.config.pretraining_tp)])
+            attn_output = attn_output.split(
+                self.hidden_size // self.config.pretraining_tp, dim=2
+            )
+            o_proj_slices = self.o_proj.weight.split(
+                self.hidden_size // self.config.pretraining_tp, dim=1
+            )
+            attn_output = sum(
+                [
+                    F.linear(attn_output[i], o_proj_slices[i])
+                    for i in range(self.config.pretraining_tp)
+                ]
+            )
         else:
             attn_output = self.o_proj(attn_output)
 
